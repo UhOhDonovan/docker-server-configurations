@@ -1,0 +1,73 @@
+version: '3'
+
+services:
+  traefik:
+    image: traefik:latest
+    container_name: traefik
+    env_file:
+      - ./.env
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - proxy
+    ports:
+      - 80:80
+      - 443:443
+    environment:
+      - CF_API_EMAIL=${USER_EMAIL}
+      - CF_API_KEY=${CF_API_KEY}
+      - TZ=America/Chicago
+      - USER_EMAIL=${USER_EMAIL}
+      - DOMAIN=${DOMAIN}
+      - DOMAIN1=${DOMAIN1}
+
+      #- NAMECHEAP_API_USER={DONNYNAMECHEAPUSER}
+      #- NAMECHEAP_API_KEY={DONNYNAMECHEAPAPIKEYHERE}
+      # - CF_API_KEY=YOUR_API_KEY
+      # be sure to use the correct one depending on if you are using a token or key
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro # Mounting this lets Traefik and Prometheus discover services and routing rules.
+      - /home/donovan/docker/traefik/data/traefik.yml:/traefik.yml:ro
+      - /home/donovan/docker/traefik/data/acme.json:/acme.json
+      - /home/donovan/docker/traefik/data/config.yml:/config.yml:ro
+      # - ./data/logs/traefik.log:/access.log
+    command:
+      # - "--log.level=INFO"
+      # - "--log.filePath=./data/logs/traefik.log"
+      - "--api.dashboard=true"
+      - "--metrics.prometheus=true"
+      - "--metrics.prometheus.buckets=0.1,0.3,1.2,5.0"
+      - "--providers.docker=true"
+      - "--providers.docker.watch"
+      # - "--providers.docker.swarmmode"
+   
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      - "traefik.constraint-label=proxy"
+      - "traefik.http.routers.traefik.entrypoints=http"
+      - "traefik.http.routers.traefik.rule=Host(`traefik-dashboard.local.${DOMAIN}`, `traefik-dashboard.${DOMAIN}`, `traefik-dashboard.local.${DOMAIN1}`, `traefik-dashboard.${DOMAIN1}`)"
+      - "traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_USER}:${TRAEFIK_PASSWORD_HASH}"
+      - "traefik.http.middlewares.traefik-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.sslheader.headers.customrequestheaders.X-Forwarded-Proto=https"
+      - "traefik.http.routers.traefik.middlewares=traefik-https-redirect"
+      - "traefik.http.routers.traefik-secure.entrypoints=https"
+      - "traefik.http.routers.traefik-secure.rule=Host(`traefik-dashboard.local.${DOMAIN}`, `traefik-dashboard.${DOMAIN}`, `traefik-dashboard.local.${DOMAIN1}`, `traefik-dashboard.${DOMAIN1}`)"
+      - "traefik.http.routers.traefik-secure.middlewares=traefik-auth"
+      - "traefik.http.routers.traefik-secure.tls=true"
+      - "traefik.http.routers.traefik-secure.tls.certresolver=cloudflare"
+      - "traefik.http.routers.traefik-secure.tls.domains[0].main=local.${DOMAIN}"
+      - "traefik.http.routers.traefik-secure.tls.domains[0].sans=*.local.${DOMAIN}"
+      - "traefik.http.routers.traefik-secure.tls.domains[1].main=${DOMAIN}"
+      - "traefik.http.routers.traefik-secure.tls.domains[1].sans=*.${DOMAIN}"
+      - "traefik.http.routers.traefik-secure.tls.domains[2].main=local.${DOMAIN1}"
+      - "traefik.http.routers.traefik-secure.tls.domains[2].sans=*.local.${DOMAIN1}"
+      - "traefik.http.routers.traefik-secure.tls.domains[3].main=${DOMAIN1}"
+      - "traefik.http.routers.traefik-secure.tls.domains[3].sans=*.${DOMAIN1}"
+      - "traefik.http.routers.traefik-secure.service=api@internal"
+      - "traefik.http.services.traefik.loadbalancer.server.port=8080"
+networks:
+  proxy:
+    external: true
